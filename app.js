@@ -1,22 +1,19 @@
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
+const OpenAI = require('openai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Environment configuration
-require('dotenv').config();
-
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Gemini API configuration - now using environment variables
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'your-default-key-here';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
+// Initialize OpenAI (will use process.env.OPENAI_API_KEY)
+const openai = new OpenAI();
 
-// Improved Gemini route
+// OpenAI API route
 app.post('/generate', async (req, res) => {
   try {
     const { prompt } = req.body;
@@ -25,48 +22,26 @@ app.post('/generate', async (req, res) => {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
-    const response = await axios.post(
-      `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{ text: prompt }]
-        }]
-      },
-      {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 10000 // 10 second timeout
-      }
-    );
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo", // Free tier compatible
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7, // Controls creativity (0-2)
+      max_tokens: 500   // Limit response length
+    });
 
-    // More robust response parsing
-    const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text 
-      || response.data?.promptFeedback?.blockReason 
-      || 'No reply from Gemini';
-
-    res.json({ reply: text });
+    const reply = completion.choices[0]?.message?.content || "No response";
+    res.json({ reply });
 
   } catch (error) {
-    console.error('Gemini API error:', error.response?.data || error.message);
-    
-    let errorMessage = 'Failed to process your request';
-    let statusCode = 500;
-    
-    if (error.response) {
-      // Handle different Gemini API error responses
-      statusCode = error.response.status;
-      errorMessage = error.response.data?.error?.message || errorMessage;
-    } else if (error.request) {
-      errorMessage = 'No response from Gemini API';
-    }
-    
-    res.status(statusCode).json({ 
-      error: errorMessage,
+    console.error('OpenAI error:', error.message);
+    res.status(500).json({ 
+      error: 'AI service failed',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// Serve the chat UI (unchanged)
+// Serve frontend
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -135,15 +110,13 @@ app.get('/', (req, res) => {
           body: JSON.stringify({ prompt: input })
         });
 
-        if (!res.ok) {
-          throw new Error(await res.text());
-        }
-
+        if (!res.ok) throw new Error(await res.text());
+        
         const data = await res.json();
         appendMessage(data.reply, 'bot-message');
       } catch (err) {
-        console.error('Error:', err);
-        appendMessage('Sorry, I encountered an error processing your request. Please try again.', 'bot-message');
+        console.error(err);
+        appendMessage('Error: Please try again later', 'bot-message');
       } finally {
         userInput.disabled = false;
         sendButton.disabled = false;
@@ -161,7 +134,7 @@ app.get('/', (req, res) => {
   `);
 });
 
-// Start the server
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
