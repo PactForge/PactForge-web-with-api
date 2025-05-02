@@ -5,43 +5,68 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Environment configuration
+require('dotenv').config();
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Gemini API configuration
-const GEMINI_API_KEY = 'AIzaSyAVlT91E8kFHwuf0vBrNFoV4v1CKQAGDSc';
+// Gemini API configuration - now using environment variables
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'your-default-key-here';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
 
-// Gemini route (fixed)
+// Improved Gemini route
 app.post('/generate', async (req, res) => {
   try {
-    const prompt = req.body.prompt;
+    const { prompt } = req.body;
+    
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
 
     const response = await axios.post(
       `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
       {
-        contents: [
-          {
-            parts: [{ text: prompt }]
-          }
-        ]
+        contents: [{
+          parts: [{ text: prompt }]
+        }]
       },
       {
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000 // 10 second timeout
       }
     );
 
-    const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || 'No reply';
+    // More robust response parsing
+    const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text 
+      || response.data?.promptFeedback?.blockReason 
+      || 'No reply from Gemini';
+
     res.json({ reply: text });
 
   } catch (error) {
-    console.error('Gemini error:', error.message);
-    res.status(500).json({ error: 'Gemini API failed' });
+    console.error('Gemini API error:', error.response?.data || error.message);
+    
+    let errorMessage = 'Failed to process your request';
+    let statusCode = 500;
+    
+    if (error.response) {
+      // Handle different Gemini API error responses
+      statusCode = error.response.status;
+      errorMessage = error.response.data?.error?.message || errorMessage;
+    } else if (error.request) {
+      errorMessage = 'No response from Gemini API';
+    }
+    
+    res.status(statusCode).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
-// Serve the chat UI
+// Serve the chat UI (unchanged)
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -100,6 +125,8 @@ app.get('/', (req, res) => {
 
       appendMessage(input, 'user-message');
       userInput.value = '';
+      userInput.disabled = true;
+      sendButton.disabled = true;
 
       try {
         const res = await fetch('/generate', {
@@ -108,10 +135,19 @@ app.get('/', (req, res) => {
           body: JSON.stringify({ prompt: input })
         });
 
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+
         const data = await res.json();
         appendMessage(data.reply, 'bot-message');
       } catch (err) {
-        appendMessage('Error contacting Gemini API.', 'bot-message');
+        console.error('Error:', err);
+        appendMessage('Sorry, I encountered an error processing your request. Please try again.', 'bot-message');
+      } finally {
+        userInput.disabled = false;
+        sendButton.disabled = false;
+        userInput.focus();
       }
     }
 
@@ -127,5 +163,5 @@ app.get('/', (req, res) => {
 
 // Start the server
 app.listen(PORT, () => {
-  console.log(`App running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
