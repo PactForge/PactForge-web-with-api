@@ -6,17 +6,15 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
-
-// Serve static files
 app.use(express.static(__dirname));
 
-// Gemini API
+// Gemini API Configuration
 const GEMINI_API_KEY = 'AIzaSyAVlT91E8kFHwuf0vBrNFoV4v1CKQAGDSc';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
 
+// Route to talk to Gemini
 app.post('/generate', async (req, res) => {
   try {
     const prompt = req.body.prompt;
@@ -24,18 +22,28 @@ app.post('/generate', async (req, res) => {
     const response = await axios.post(
       `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
       {
-        contents: [{ parts: [{ text: prompt }] }]
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }]
+          }
+        ]
+      },
+      {
+        headers: { 'Content-Type': 'application/json' }
       }
     );
 
     const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || 'No reply';
     res.json({ reply: text });
+
   } catch (error) {
     console.error('Gemini error:', error.message);
     res.status(500).json({ error: 'Gemini API failed' });
   }
 });
 
+// Frontend (Chat UI)
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -119,7 +127,6 @@ app.get('/', (req, res) => {
   `);
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`App running on port ${PORT}`);
 });
