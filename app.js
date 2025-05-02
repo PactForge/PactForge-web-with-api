@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,11 +9,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Gemini API Configuration
+// Gemini API configuration
 const GEMINI_API_KEY = 'AIzaSyAVlT91E8kFHwuf0vBrNFoV4v1CKQAGDSc';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
 
-// Route to talk to Gemini
+// Gemini route (fixed)
 app.post('/generate', async (req, res) => {
   try {
     const prompt = req.body.prompt;
@@ -24,7 +23,6 @@ app.post('/generate', async (req, res) => {
       {
         contents: [
           {
-            role: 'user',
             parts: [{ text: prompt }]
           }
         ]
@@ -43,7 +41,7 @@ app.post('/generate', async (req, res) => {
   }
 });
 
-// Frontend (Chat UI)
+// Serve the chat UI
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -127,6 +125,7 @@ app.get('/', (req, res) => {
   `);
 });
 
+// Start the server
 app.listen(PORT, () => {
   console.log(`App running on port ${PORT}`);
 });
